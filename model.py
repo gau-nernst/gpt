@@ -3,11 +3,11 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 
-class CausalSelfAttention(nn.Module):
-    def __init__(self, embed_dim: int, n_heads: int, bias: bool, dropout: float):
+class GPTAttention(nn.Module):
+    def __init__(self, d_model: int, n_heads: int, bias: bool = False, dropout: float = 0.0) -> None:
         super().__init__()
-        self.in_proj = nn.Linear(embed_dim, embed_dim * 3, bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias)
+        self.in_proj = nn.Linear(d_model, d_model * 3, bias)
+        self.out_proj = nn.Linear(d_model, d_model, bias)
         self.n_heads = n_heads
         self.dropout = dropout
 
@@ -19,19 +19,21 @@ class CausalSelfAttention(nn.Module):
 
 
 class GPTBlock(nn.Module):
-    def __init__(self, embed_dim: int, n_heads: int, mlp_ratio: float, bias: bool, dropout: float):
+    def __init__(
+        self, d_model: int, n_heads: int, mlp_ratio: float = 4.0, bias: bool = False, dropout: float = 0.0
+    ) -> None:
         super().__init__()
-        mlp_dim = int(embed_dim * mlp_ratio)
+        mlp_dim = int(d_model * mlp_ratio)
         self.mha = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            CausalSelfAttention(embed_dim, n_heads, bias, dropout),
+            nn.LayerNorm(d_model),
+            GPTAttention(d_model, n_heads, bias, dropout),
             nn.Dropout(dropout),
         )
         self.mlp = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, mlp_dim, bias),
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, mlp_dim, bias),
             nn.GELU(),
-            nn.Linear(mlp_dim, embed_dim, bias),
+            nn.Linear(mlp_dim, d_model, bias),
             nn.Dropout(dropout),
         )
 
@@ -42,9 +44,9 @@ class GPTBlock(nn.Module):
 
 
 class PositionalEmbedding(nn.Module):
-    def __init__(self, context_length: int, embed_dim: int) -> None:
+    def __init__(self, context_length: int, d_model: int) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.empty(1, context_length, embed_dim))
+        self.weight = nn.Parameter(torch.empty(1, context_length, d_model))
 
     def forward(self, x: Tensor) -> Tensor:
         return x + self.weight[:, : x.shape[1]]
@@ -55,18 +57,18 @@ class GPT(nn.Module):
         self,
         vocab_size: int,  # should pad up to nearest multiple of 64 for efficiency
         context_length: int,
-        embed_dim: int,
+        d_model: int,
         n_heads: int,
         n_layers: int,
-        mlp_ratio: float,
-        bias: bool,
-        dropout: float,
-    ):
+        mlp_ratio: float = 4.0,
+        bias: bool = False,
+        dropout: float = 0.0,
+    ) -> None:
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.pe = PositionalEmbedding(context_length, embed_dim)
-        self.blocks = nn.Sequential(*[GPTBlock(embed_dim, n_heads, mlp_ratio, bias, dropout) for _ in range(n_layers)])
-        self.norm = nn.LayerNorm(embed_dim)
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.pe = PositionalEmbedding(context_length, d_model)
+        self.blocks = nn.Sequential(*[GPTBlock(d_model, n_heads, mlp_ratio, bias, dropout) for _ in range(n_layers)])
+        self.norm = nn.LayerNorm(d_model)
 
         self.reset_parameters()
 
@@ -79,7 +81,7 @@ class GPT(nn.Module):
             else:
                 print(f"Unrecognized param {name} with shape {param.shape}")
 
-    def forward(self, x: Tensor, targets: Tensor | None = None) -> None:
+    def forward(self, x: Tensor, targets: Tensor | None = None) -> Tensor:
         """
         Args:
             x: shape (B, L)
@@ -90,11 +92,11 @@ class GPT(nn.Module):
         logits = x @ self.embedding.weight.T  # (B, L, vocab_size)
 
         if targets is not None:
-            return F.cross_entropy(logits.flatten(0, 1), targets.flatten(), ignore_index=-1)
+            return F.cross_entropy(logits.flatten(0, 1), targets.flatten())
         return logits
 
-    def configure_optimizers(self, lr: float, wd: float, betas: tuple[float, float]) -> torch.optim.Optimizer:
-        # From nanoGPT. Only 2D params will be weight decayed.
+    def configure_optimizer(self, lr: float, wd: float, betas: tuple[float, float]) -> torch.optim.Optimizer:
+        # From nanoGPT/llama2.c: Only 2D params will be weight decayed.
         # i.e. matmuls + embeddings are decayed, biases and layernorms are not.
         params = [p for p in self.parameters() if p.requires_grad]
         decay_params = [p for p in params if p.dim() >= 2]
