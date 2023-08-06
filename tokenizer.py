@@ -30,7 +30,7 @@ if __name__ == "__main__":
         )
 
     elif args.action == "tokenize":
-        assert args.save_name is not None
+        assert args.save_path is not None
         tokenizer = spm.SentencePieceProcessor(f"{args.model_name}.model")
         vocab_size = tokenizer.vocab_size()
         assert vocab_size < 2**15  # int16

@@ -113,5 +113,5 @@ class GPT(nn.Module):
             dict(params=decay_params, weight_decay=wd),
             dict(params=no_decay_params, weight_decay=0),
         ]
-        optim = torch.optim.AdamW(optim_groups, lr, betas)
+        optim = torch.optim.AdamW(optim_groups, lr, betas, fused=True)
         return optim
