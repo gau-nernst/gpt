@@ -9,7 +9,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("action")
     parser.add_argument("--input", required=True)
-    parser.add_argument("--save_name")
+    parser.add_argument("--save_path")
     parser.add_argument("--model_name", required=True)
     parser.add_argument("--model_type", default="unigram")
     parser.add_argument("--vocab_size", type=int, default=8000)
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         tokens_list = tokenizer.Encode(stories, add_bos=True)
 
         size = sum(len(x) for x in tokens_list)
-        data = np.memmap(f"{args.save_name}.bin", np.int16, "w+", 0, size)
+        data = np.memmap(args.save_path, np.int16, "w+", 0, size)
         i = 0
 
         for tokens in tokens_list:
